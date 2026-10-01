@@ -44,7 +44,7 @@ def _close_session(hass: HomeAssistant, entity_id: str) -> None:
     """Close a retained legacy WebRTC session."""
     sessions: dict[str, LegacySession] = hass.data[DATA_LEGACY_SESSIONS]
     if session := sessions.pop(entity_id, None):
-        session.cancel_expiration()
+        session.cancel_expiration.cancel()
         session.close()
 
 
