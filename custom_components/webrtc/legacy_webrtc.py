@@ -31,6 +31,21 @@ LEGACY_SESSION_TTL = 10 * 60
 DATA_LEGACY_SESSIONS = "webrtc_legacy_sessions"
 
 
+def _sdp_media_summary(sdp: str) -> str:
+    """Return non-sensitive SDP media details for diagnostics."""
+    prefixes = (
+        "m=",
+        "a=mid:",
+        "a=sendrecv",
+        "a=sendonly",
+        "a=recvonly",
+        "a=inactive",
+        "a=rtpmap:",
+        "a=fmtp:",
+    )
+    return " | ".join(line for line in sdp.splitlines() if line.startswith(prefixes))
+
+
 @dataclass
 class LegacySession:
     """Track a modern Home Assistant WebRTC session for a legacy client."""
@@ -97,6 +112,8 @@ async def ws_legacy_webrtc_offer(
     error: WebRTCError | None = None
     session_id = ulid()
 
+    _LOGGER.debug("Legacy WebRTC offer: %s", _sdp_media_summary(msg["offer"]))
+
     @callback
     def capture_message(message: WebRTCMessage) -> None:
         nonlocal answer, error
@@ -141,6 +158,8 @@ async def ws_legacy_webrtc_offer(
             "Camera did not return a WebRTC answer",
         )
         return
+
+    _LOGGER.debug("Legacy WebRTC answer: %s", _sdp_media_summary(answer))
 
     _retain_session(camera.hass, msg["entity_id"], camera, session_id)
     connection.send_result(msg["id"], {"answer": answer})
