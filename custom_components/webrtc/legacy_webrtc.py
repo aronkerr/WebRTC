@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import partial
 import logging
+import re
 from typing import Any
 
 import voluptuous as vol
@@ -44,6 +45,54 @@ def _sdp_media_summary(sdp: str) -> str:
         "a=fmtp:",
     )
     return " | ".join(line for line in sdp.splitlines() if line.startswith(prefixes))
+
+
+def _simplify_legacy_video_codecs(sdp: str) -> str:
+    """Offer one H264 payload to avoid malformed Nest SDP answers.
+
+    Older go2rtc releases offer several H264 payloads with equivalent codec
+    parameters. The current Nest API can answer those offers with duplicate
+    payload IDs, which prevents go2rtc from receiving video packets. Keep the
+    first H264 payload while preserving unrelated media sections and generic
+    video attributes.
+    """
+    newline = "\r\n" if "\r\n" in sdp else "\n"
+    lines = sdp.splitlines()
+    video_start = next(
+        (index for index, line in enumerate(lines) if line.startswith("m=video ")),
+        None,
+    )
+    if video_start is None:
+        return sdp
+
+    video_end = next(
+        (
+            index
+            for index in range(video_start + 1, len(lines))
+            if lines[index].startswith("m=")
+        ),
+        len(lines),
+    )
+    payload = next(
+        (
+            match.group(1)
+            for line in lines[video_start + 1 : video_end]
+            if (match := re.match(r"a=rtpmap:(\d+) H264/", line, re.IGNORECASE))
+        ),
+        None,
+    )
+    if payload is None:
+        return sdp
+
+    media = lines[video_start].split()
+    lines[video_start] = " ".join([*media[:3], payload])
+    payload_attribute = re.compile(r"a=(?:rtpmap|fmtp|rtcp-fb):(\d+)\b")
+    lines[video_start + 1 : video_end] = [
+        line
+        for line in lines[video_start + 1 : video_end]
+        if not (match := payload_attribute.match(line)) or match.group(1) == payload
+    ]
+    return newline.join(lines) + (newline if sdp.endswith(("\r\n", "\n")) else "")
 
 
 @dataclass
@@ -112,7 +161,8 @@ async def ws_legacy_webrtc_offer(
     error: WebRTCError | None = None
     session_id = ulid()
 
-    _LOGGER.debug("Legacy WebRTC offer: %s", _sdp_media_summary(msg["offer"]))
+    offer = _simplify_legacy_video_codecs(msg["offer"])
+    _LOGGER.debug("Legacy WebRTC offer: %s", _sdp_media_summary(offer))
 
     @callback
     def capture_message(message: WebRTCMessage) -> None:
@@ -128,7 +178,7 @@ async def ws_legacy_webrtc_offer(
 
     try:
         await camera.async_handle_async_webrtc_offer(
-            msg["offer"], session_id, capture_message
+            offer, session_id, capture_message
         )
     except (HomeAssistantError, ValueError) as ex:
         _LOGGER.error("Error handling legacy WebRTC offer: %s", ex)
