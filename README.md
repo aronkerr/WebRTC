@@ -60,6 +60,14 @@ You can change the go2rtc settings by adding the `go2rtc.yaml` file to your Hass
 
 **Method 2.** Manually copy `webrtc` folder from [latest release](https://github.com/AlexxIT/WebRTC/releases/latest) to `/config/custom_components` folder.
 
+### Home Assistant 2024.11+ compatibility
+
+This fork restores the legacy `camera/web_rtc_offer` WebSocket command used by
+go2rtc 1.9.x. Home Assistant 2024.11 replaced that command with an asynchronous,
+event-based camera API. The adapter translates the request and retains one
+bounded WebRTC session per camera so `hass://` sources continue to work with
+WebRTC-only cameras such as newer Google Nest doorbells.
+
 <details>
   <summary>Additional steps if you are using the UI in YAML mode: add card to resources</summary>
 

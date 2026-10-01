@@ -12,7 +12,13 @@ from homeassistant.components.binary_sensor import HomeAssistant  # fix tests
 from homeassistant.components.camera import async_get_stream_source, async_get_image
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import ATTR_ENTITY_ID, CONF_URL, EVENT_HOMEASSISTANT_STOP
+from homeassistant.const import (
+    ATTR_ENTITY_ID,
+    CONF_URL,
+    EVENT_HOMEASSISTANT_STOP,
+    MAJOR_VERSION,
+    MINOR_VERSION,
+)
 from homeassistant.core import ServiceCall
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -56,6 +62,13 @@ HLS_SESSION = str(uuid.uuid4())
 
 
 async def async_setup(hass: HomeAssistant, config: dict):
+    # go2rtc 1.9.x still uses the synchronous WebRTC camera command removed in
+    # Home Assistant 2024.11. Register an adapter for the current async API.
+    if (MAJOR_VERSION, MINOR_VERSION) >= (2024, 11):
+        from .legacy_webrtc import async_register_legacy_webrtc_command
+
+        async_register_legacy_webrtc_command(hass)
+
     # 1. Serve lovelace card
     path = Path(__file__).parent / "www"
     for name in ("video-rtc.js", "webrtc-camera.js", "digital-ptz.js"):
